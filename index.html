@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meeting planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root {
+    --paper: #f4f6f3;
+    --card: #ffffff;
+    --ink: #18261f;
+    --muted: #5e6b63;
+    --line: #d8dfd9;
+    --accent: #1e6b52;
+    --heat: #f0b429;
+    font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { min-height: 100vh; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+  main { max-width: 460px; margin: 0 auto; }
+  h1 { font-size: 2rem; line-height: 1.05; font-weight: 800; margin: 8px 0 6px; letter-spacing: -0.02em; }
+  p { margin: 0; color: var(--muted); line-height: 1.45; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  #signin { padding-top: 12vh; }
+  #gbtn { margin-top: 24px; min-height: 44px; }
+
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 8px 0; }
+
+  #best { display: block; width: 100%; text-align: left; margin: 18px 0 14px; padding: 14px 16px;
+    background: var(--ink); color: #fff; border: 0; border-radius: 14px; }
+  #best small { display: block; color: #b8c7be; margin-bottom: 4px; }
+  #best strong { font-size: 1.15rem; font-weight: 600; }
+
+  .month { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .month h2 { margin: 0; font-size: 1.15rem; font-weight: 600; }
+  .nav { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); font-size: 1.3rem; }
+  .nav:disabled { opacity: .35; cursor: default; }
+
+  .week, #grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .week span { text-align: center; font-size: .78rem; color: var(--muted); padding: 4px 0; }
+  .day { position: relative; aspect-ratio: 1 / 1.05; border-radius: 10px; border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--heat) calc(var(--h, 0) * 85%), var(--card));
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; }
+  .day .n { font-weight: 600; font-size: 1rem; }
+  .day .c { font-size: .7rem; color: var(--ink); min-height: .9em; }
+  .day:disabled { background: transparent; border-color: transparent; color: #a9b3ac; cursor: default; }
+  .day.today { border: 2px solid var(--ink); }
+  .day.mine::after { content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+  .hint { margin-top: 14px; font-size: .9rem; }
+
+  #backdrop { position: fixed; inset: 0; background: rgba(24, 38, 31, .45); }
+  #sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 82vh; overflow: auto; background: var(--card);
+    border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; }
+  #sheet h3 { margin: 0 0 4px; font-size: 1.3rem; font-weight: 800; }
+  .slots { display: grid; gap: 8px; margin: 14px 0; }
+  .slot { text-align: left; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--card); }
+  .slot .row { display: flex; justify-content: space-between; font-weight: 600; }
+  .slot .who { display: block; margin-top: 4px; font-size: .85rem; color: var(--muted); font-weight: 400; }
+  .slot[aria-pressed="true"] { border-color: var(--accent); background: #e6f1ec; }
+  .slot[aria-pressed="true"] .row::before { content: "Going"; color: var(--accent); font-size: .8rem; order: 2; margin-left: auto; margin-right: 10px; align-self: center; }
+  .done { width: 100%; padding: 14px; border-radius: 12px; border: 0; background: var(--ink); color: #fff; font-weight: 600; }
+
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #7a1f1f; color: #fff;
+    padding: 12px 16px; border-radius: 12px; max-width: 90vw; font-size: .9rem; }
+  @media (prefers-reduced-motion: no-preference) {
+    #sheet { animation: up .18s ease-out; }
+    @keyframes up { from { transform: translateY(24px); opacity: .6; } }
+  }
+</style>
+</head>
+<body>
+<main>
+  <section id="signin" hidden>
+    <h1>When can we meet?</h1>
+    <p>Sign in with your Google account, then tap the days you're free.</p>
+    <div id="gbtn"></div>
+  </section>
+
+  <section id="app" hidden>
+    <div class="top">
+      <div>
+        <h1>When can we meet?</h1>
+        <p id="hello"></p>
+      </div>
+      <button class="link" id="out" type="button">Sign out</button>
+    </div>
+
+    <button id="best" type="button" hidden></button>
+
+    <div class="month">
+      <button class="nav" id="prev" type="button" aria-label="Previous month">&lsaquo;</button>
+      <h2 id="monthLabel"></h2>
+      <button class="nav" id="next" type="button" aria-label="Next month">&rsaquo;</button>
+    </div>
+    <div class="week" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+    <div id="grid"></div>
+    <p class="hint" id="hint"></p>
+  </section>
+</main>
+
+<div id="backdrop" hidden></div>
+<div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <h3 id="sheetTitle"></h3>
+  <p>Tick every time that works for you. You can change it any time.</p>
+  <div class="slots" id="slots"></div>
+  <button class="done" id="close" type="button">Done</button>
+</div>
+<div id="toast" role="status" hidden></div>
+
+<script>
+// ====== Fill these two in ======
+const CLIENT_ID = 'PASTE_YOUR_GOOGLE_CLIENT_ID_HERE';   // same value as in Code.gs
+const API_URL   = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+// ===============================
+
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2, '0');
+const key = (y, m, d) => y + '-' + pad(m + 1) + '-' + pad(d);
+const parseKey = k => { const p = k.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); };
+const fmt = (k, o) => parseKey(k).toLocaleDateString(undefined, o);
+const topCount = data => Math.max(0, ...Object.values(data).map(c => c.names.length));
+
+let token = localStorage.getItem('mp_token');
+let state = null;
+let view = null;       // {y, m}
+let selected = null;   // 'yyyy-mm-dd'
+let inFlight = 0;
+let chain = Promise.resolve();
+
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => { t.hidden = true; }, 4000);
+}
+
+async function api(payload) {
+  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ idToken: token }, payload)) });
+  const data = await res.json();
+  if (!data.ok) {
+    if (data.error === 'AUTH') { showSignin(); throw new Error('Please sign in again.'); }
+    throw new Error(data.error);
+  }
+  return data.state;
+}
+
+function showSignin() {
+  token = null; localStorage.removeItem('mp_token');
+  $('#app').hidden = true; $('#signin').hidden = false;
+  closeSheet();
+}
+
+function onCredential(resp) {
+  token = resp.credential;
+  localStorage.setItem('mp_token', token);
+  load();
+}
+
+async function load() {
+  $('#signin').hidden = true; $('#app').hidden = false;
+  try {
+    state = await api({ action: 'state' });
+    if (!view) { const p = state.today.split('-').map(Number); view = { y: p[0], m: p[1] - 1 }; }
+    render();
+  } catch (e) { if (!$('#signin').hidden) return; toast("Couldn't load the calendar. Check your connection and try again."); }
+}
+
+function render() {
+  $('#hello').textContent = 'Signed in as ' + state.me;
+  renderBest(); renderCal();
+  if (selected) renderSheet();
+}
+
+function renderBest() {
+  let best = null;
+  Object.keys(state.days).forEach(k => state.slots.forEach(s => {
+    const c = state.days[k][s]; if (!c) return;
+    const n = c.names.length;
+    const better = !best || n > best.n || (n === best.n && (k < best.k || (k === best.k && state.slots.indexOf(s) < state.slots.indexOf(best.s))));
+    if (better) best = { k, s, n };
+  }));
+  const el = $('#best');
+  if (!best) { el.hidden = true; $('#hint').textContent = 'No votes yet. Tap a day to add the first one.'; return; }
+  $('#hint').textContent = 'Darker days have more people free. A green dot marks days you voted on.';
+  el.hidden = false; el.replaceChildren();
+  const small = document.createElement('small'); small.textContent = 'Best time so far';
+  const strong = document.createElement('strong');
+  strong.textContent = fmt(best.k, { weekday: 'long', day: 'numeric', month: 'long' }) + ', ' + best.s + ': ' + best.n + (best.n === 1 ? ' person' : ' people') + ' free';
+  el.append(small, strong);
+  el.onclick = () => openSheet(best.k);
+}
+
+function renderCal() {
+  const y = view.y, m = view.m;
+  $('#monthLabel').textContent = new Date(y, m, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const t = state.today.split('-').map(Number);
+  const offset = (y - t[0]) * 12 + (m - (t[1] - 1));
+  $('#prev').disabled = offset <= 0;
+  $('#next').disabled = offset >= 11;
+  const grid = $('#grid'); grid.replaceChildren();
+  const first = new Date(y, m, 1).getDay(), n = new Date(y, m + 1, 0).getDate();
+  const gmax = Math.max(1, ...Object.values(state.days).map(topCount));
+  for (let i = 0; i < first; i++) grid.append(document.createElement('span'));
+  for (let d = 1; d <= n; d++) {
+    const k = key(y, m, d), data = state.days[k], top = data ? topCount(data) : 0;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'day'; b.disabled = k < state.today;
+    if (k === state.today) b.classList.add('today');
+    if (data && Object.values(data).some(c => c.mine)) b.classList.add('mine');
+    b.style.setProperty('--h', top / gmax);
+    b.setAttribute('aria-label', fmt(k, { weekday: 'long', day: 'numeric', month: 'long' }) + (top ? ', up to ' + top + ' free' : ''));
+    const num = document.createElement('span'); num.className = 'n'; num.textContent = d;
+    const cnt = document.createElement('span'); cnt.className = 'c'; cnt.textContent = top ? top : '';
+    b.append(num, cnt);
+    b.onclick = () => openSheet(k);
+    grid.append(b);
+  }
+}
+
+function openSheet(k) {
+  selected = k;
+  $('#backdrop').hidden = false; $('#sheet').hidden = false;
+  renderSheet();
+  $('#close').focus();
+}
+function closeSheet() { selected = null; $('#backdrop').hidden = true; $('#sheet').hidden = true; }
+
+function renderSheet() {
+  $('#sheetTitle').textContent = fmt(selected, { weekday: 'long', day: 'numeric', month: 'long' });
+  const box = $('#slots'); box.replaceChildren();
+  const data = state.days[selected] || {};
+  state.slots.forEach(s => {
+    const c = data[s] || { names: [], mine: false };
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'slot'; b.setAttribute('aria-pressed', c.mine);
+    const row = document.createElement('span'); row.className = 'row';
+    const time = document.createElement('span'); time.textContent = s;
+    const count = document.createElement('span'); count.textContent = c.names.length + (c.names.length === 1 ? ' free' : ' free');
+    row.append(time, count);
+    const who = document.createElement('span'); who.className = 'who';
+    who.textContent = c.names.length ? c.names.join(', ') : 'Nobody yet';
+    b.append(row, who);
+    b.onclick = () => toggle(selected, s, !c.mine);
+    box.append(b);
+  });
+}
+
+function toggle(k, s, on) {
+  // Show the change immediately, then confirm with the server.
+  state.days[k] = state.days[k] || {};
+  const cell = state.days[k][s] = state.days[k][s] || { names: [], mine: false };
+  if (on) { cell.names.push(state.me); cell.mine = true; }
+  else { const i = cell.names.indexOf(state.me); if (i >= 0) cell.names.splice(i, 1); cell.mine = false; }
+  if (!cell.names.length) delete state.days[k][s];
+  if (!Object.keys(state.days[k]).length) delete state.days[k];
+  render();
+
+  inFlight++;
+  chain = chain.then(() => api({ action: 'toggle', date: k, slot: s, on }))
+    .then(st => { if (inFlight === 1) { state = st; render(); } })
+    .catch(e => { toast(e.message || "Couldn't save that. Check your connection and try again."); return load(); })
+    .finally(() => { inFlight--; });
+}
+
+$('#prev').onclick = () => { view.m--; if (view.m < 0) { view.m = 11; view.y--; } renderCal(); };
+$('#next').onclick = () => { view.m++; if (view.m > 11) { view.m = 0; view.y++; } renderCal(); };
+$('#close').onclick = closeSheet;
+$('#backdrop').onclick = closeSheet;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+$('#out').onclick = () => { if (window.google) google.accounts.id.disableAutoSelect(); showSignin(); };
+document.addEventListener('visibilitychange', () => { if (!document.hidden && token && state && !inFlight) load(); });
+
+function whenGoogle(cb) { if (window.google && google.accounts && google.accounts.id) cb(); else setTimeout(() => whenGoogle(cb), 100); }
+whenGoogle(() => {
+  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCredential, auto_select: true });
+  google.accounts.id.renderButton($('#gbtn'), { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill' });
+  if (token) load(); else showSignin();
+});
+</script>
+</body>
+</html>
